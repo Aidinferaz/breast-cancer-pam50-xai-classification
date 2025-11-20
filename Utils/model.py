@@ -4,7 +4,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, classification_report
-
+from interpret.glassbox import ExplainableBoostingClassifier
 
 def preprocess_data(X_train, X_val, X_test=None):
     """
@@ -62,3 +62,15 @@ def evaluate(model, X, y, class_names=None, model_name="Model"):
     print("\nClassification Report:")
     print(classification_report(y, y_pred, target_names=class_names))
     return acc
+
+def train_ebm(X_train, y_train, random_state=42):
+    """
+    Melatih model Glass-Box (Explainable Boosting Machine).
+    EBM secara otomatis menangani interaksi antar fitur.
+    """
+    print(f"Training EBM (Glass-Box)...")
+    # n_jobs=-1 menggunakan semua core CPU
+    ebm = ExplainableBoostingClassifier(random_state=random_state, n_jobs=-1)
+    ebm.fit(X_train, y_train)
+    print("Training Selesai.")
+    return ebm
