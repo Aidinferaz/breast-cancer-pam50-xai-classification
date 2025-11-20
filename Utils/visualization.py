@@ -1,6 +1,6 @@
 import shap
 import matplotlib.pyplot as plt
-import explainer  # Import modul explainers yang kita buat di atas
+from Utils import explainer as explainers
 
 
 def plot_beeswarm(shap_values, X_data, feature_names, class_names, target_class='all', max_display=15):
