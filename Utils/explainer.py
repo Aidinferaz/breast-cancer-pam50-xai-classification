@@ -65,3 +65,20 @@ def fix_shap_dimensions(shap_values, X_data, class_idx):
                 shap_matrix = shap_matrix.T
 
     return shap_matrix
+
+def extract_ebm_explanation(ebm_model, X_val, y_val=None):
+    """
+    Mengekstrak penjelasan Global dan Lokal dari EBM.
+    EBM tidak butuh perhitungan SHAP terpisah karena sudah built-in.
+    """
+    print("--- Mengekstrak Penjelasan EBM ---")
+
+    # 1. Penjelasan Global (Grafik fungsi per fitur)
+    ebm_global = ebm_model.explain_global()
+
+    # 2. Penjelasan Lokal (Per pasien)
+    # Kita butuh X_val untuk melihat kontribusi fitur pada data validasi
+    ebm_local = ebm_model.explain_local(X_val, y_val)
+
+    print("✅ Ekstraksi Selesai.")
+    return ebm_global, ebm_local
