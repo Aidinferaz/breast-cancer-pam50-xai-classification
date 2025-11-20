@@ -1,7 +1,7 @@
 import shap
 import matplotlib.pyplot as plt
 from Utils import explainer as explainers
-
+from interpret import show
 
 def plot_beeswarm(shap_values, X_data, feature_names, class_names, target_class='all', max_display=15):
     """
@@ -68,3 +68,20 @@ def plot_waterfall(shap_values, explainer, X_data, feature_names, class_names, s
 
     except Exception as e:
         print(f"❌ Gagal membuat plot waterfall: {e}")
+def plot_ebm_dashboard(ebm_global, title="EBM Global Explanation"):
+    """
+    Menampilkan Dashboard Interaktif EBM.
+    Fitur ini akan membuka widget interaktif di Jupyter Notebook.
+    """
+    print(f"Membuka Dashboard: {title}...")
+    # show() dari library interpret akan merender widget
+    show(ebm_global)
+
+def plot_ebm_feature_curve(ebm_global, feature_index=0):
+    """
+    Menampilkan grafik kurva fungsi (shape function) untuk fitur tertentu.
+    Ini menunjukkan bagaimana risiko berubah seiring nilai gen naik/turun.
+    """
+    # Mengambil data grafik dari objek penjelasan
+    data = ebm_global.visualize(feature_index)
+    return data # Di notebook, objek ini akan otomatis ter-render
