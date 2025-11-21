@@ -1,27 +1,3 @@
-import subprocess
-import sys
-import os
-
-def install_requirements(requirements_file='requirements.txt'):
-    # 1. Cek apakah file requirements.txt ada
-    if not os.path.exists(requirements_file):
-        print(f"File {requirements_file} tidak ditemukan.")
-        return
-
-    print(f"Memeriksa dan menginstall library dari {requirements_file}...")
-
-    try:
-        # 2. Jalankan perintah pip install
-        # sys.executable memastikan kita menggunakan pip dari environment python yang sedang jalan
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", requirements_file])
-        print("\n✅ Semua library berhasil dicek/diinstall.")
-
-    except subprocess.CalledProcessError as e:
-        print(f"\n❌ Terjadi kesalahan saat install: {e}")
-
-if __name__ == "__main__":
-    install_requirements()
-
 import shap
 import numpy as np
 
