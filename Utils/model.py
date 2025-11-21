@@ -5,6 +5,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, classification_report
 from interpret.glassbox import ExplainableBoostingClassifier
+from sklearn.svm import SVC
 
 def load_dataset(ide="manual", file_path: str = None):
   if ide == "local":
@@ -90,3 +91,19 @@ def train_ebm(X_train, y_train, random_state=42):
     ebm.fit(X_train, y_train)
     print("Training Selesai.")
     return ebm
+
+def train_svm(X_train, y_train, C=1.0, kernel='rbf', gamma='scale', random_state=42):
+    """
+    Melatih model SVM (Support Vector Machine).
+    Kita set probability=True agar kompatibel dengan SHAP KernelExplainer.
+    """
+    print(f"Training SVM ({kernel} kernel)...")
+    model = SVC(
+        C=C,
+        kernel=kernel,
+        gamma=gamma,
+        probability=True,  # Wajib True untuk analisis SHAP nanti
+        random_state=random_state
+    )
+    model.fit(X_train, y_train)
+    return model

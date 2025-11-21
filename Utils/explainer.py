@@ -81,3 +81,36 @@ def extract_ebm_explanation(ebm_model, X_val, y_val=None):
 
     print("✅ Ekstraksi Selesai.")
     return ebm_global, ebm_local
+
+
+def compute_shap_general(model, X_train, X_target, n_background=50, n_samples=100):
+    """
+    Menghitung SHAP untuk model umum (seperti SVM, KNN, Neural Net) menggunakan KernelExplainer.
+
+    PERINGATAN: Metode ini lambat secara komputasi.
+    - n_background: Jumlah sampel data latih sebagai acuan (background).
+    - n_samples: Batasi jumlah sampel X_target yang mau dijelaskan agar tidak terlalu lama.
+    """
+    print(f"--- Menghitung SHAP (General/Kernel)... ---")
+    print("⚠️ Note: Proses ini mungkin memakan waktu lebih lama dari Linear/Tree.")
+
+    # 1. Siapkan Background Data (Median/Kmeans lebih disarankan untuk KernelExplainer)
+    # Kita gunakan kmeans untuk meringkas data train menjadi n_background titik representatif
+    background = shap.kmeans(X_train, n_background)
+
+    # 2. Inisialisasi KernelExplainer
+    # Kita pass fungsi predict_proba model
+    explainer = shap.KernelExplainer(model.predict_proba, background)
+
+    # 3. Hitung SHAP Values
+    # Batasi X_target hanya n_samples pertama jika data sangat besar
+    if len(X_target) > n_samples:
+        print(f"Mengambil subset {n_samples} data pertama untuk mempercepat...")
+        X_target_sub = X_target[:n_samples]
+    else:
+        X_target_sub = X_target
+
+    shap_values = explainer.shap_values(X_target_sub)
+
+    print("✅ Perhitungan SHAP Kernel selesai.")
+    return explainer, shap_values
