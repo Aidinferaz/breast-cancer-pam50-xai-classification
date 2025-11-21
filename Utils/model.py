@@ -30,6 +30,22 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, classification_report
 from interpret.glassbox import ExplainableBoostingClassifier
 
+def load_dataset(ide="manual", file_path: str = None):
+  if ide == "local":
+    df = pd.read_csv("G:\My Drive\ITS\Tugas\Semester_5\Biomedical Engineering\Final Project Req\Dataset.csv")
+  elif ide == "colab":
+    from google.colab import drive
+    drive.mount('/content/drive')
+    if file_path is None:
+        file_path = "/content/drive/MyDrive/ITS/Tugas/Semester_5/Biomedical Engineering/Final Project Req/Dataset.csv"
+    df = pd.read_csv(file_path)
+  else:
+    if file_path is None:
+        raise ValueError("file_path must be provided for manual ide.")
+    df = pd.read_csv(file_path)
+
+  return df
+
 def preprocess_data(X_train, X_val, X_test=None):
     """
     Melakukan Standard Scaling pada data.
