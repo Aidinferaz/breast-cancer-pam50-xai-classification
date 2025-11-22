@@ -3,9 +3,9 @@ import numpy as np
 from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score, classification_report
-from interpret.glassbox import ExplainableBoostingClassifier
 from sklearn.svm import SVC
+from sklearn.metrics import accuracy_score, classification_report
+from interpret.glassbox import ExplainableBoostingClassifier  # Pastikan library 'interpret' terinstall
 
 def load_dataset(ide="manual", file_path: str = None):
   if ide == "local":
@@ -25,7 +25,7 @@ def load_dataset(ide="manual", file_path: str = None):
 
 def preprocess_data(X_train, X_val, X_test=None):
     """
-    Melakukan Standard Scaling pada data.
+    Melakukan Standard Scaling pada data fitur.
     """
     scaler = StandardScaler()
     X_train_scaled = scaler.fit_transform(X_train)
@@ -68,42 +68,76 @@ def train_random_forest(X_train, y_train, n_estimators=100, random_state=42):
     return model
 
 
-def evaluate(model, X, y, class_names=None, model_name="Model"):
-    """
-    Menampilkan metrik evaluasi standar.
-    """
-    y_pred = model.predict(X)
-    acc = accuracy_score(y, y_pred)
-    print(f"--- Evaluasi {model_name} ---")
-    print(f"Akurasi: {acc:.4f}")
-    print("\nClassification Report:")
-    print(classification_report(y, y_pred, target_names=class_names))
-    return acc
-
-def train_ebm(X_train, y_train, random_state=42):
-    """
-    Melatih model Glass-Box (Explainable Boosting Machine).
-    EBM secara otomatis menangani interaksi antar fitur.
-    """
-    print(f"Training EBM (Glass-Box)...")
-    # n_jobs=-1 menggunakan semua core CPU
-    ebm = ExplainableBoostingClassifier(random_state=random_state, n_jobs=-1)
-    ebm.fit(X_train, y_train)
-    print("Training Selesai.")
-    return ebm
-
 def train_svm(X_train, y_train, C=1.0, kernel='rbf', gamma='scale', random_state=42):
     """
     Melatih model SVM (Support Vector Machine).
-    Kita set probability=True agar kompatibel dengan SHAP KernelExplainer.
+    probability=True agar kompatibel dengan SHAP.
     """
     print(f"Training SVM ({kernel} kernel)...")
     model = SVC(
         C=C,
         kernel=kernel,
         gamma=gamma,
-        probability=True,  # Wajib True untuk analisis SHAP nanti
+        probability=True,
         random_state=random_state
     )
     model.fit(X_train, y_train)
     return model
+
+
+# --- BAGIAN YANG DIPERBAIKI ---
+def train_ebm(X_train, y_train, interactions=0, random_state=42):
+    """
+    Melatih model Glass-Box (Explainable Boosting Machine).
+    Parameter 'interactions' ditambahkan untuk mengontrol pencarian interaksi.
+    - interactions=0: Cepat (hanya efek main)
+    - interactions=10: Mencari 10 interaksi terkuat (lebih lambat)
+    """
+    print(f"Training EBM (Glass-Box)...")
+    print(f"Note: Interaksi diset ke {interactions}")
+
+    ebm = ExplainableBoostingClassifier(
+        interactions=interactions,
+        random_state=random_state,
+        n_jobs=-1
+    )
+    ebm.fit(X_train, y_train)
+    print("Training Selesai.")
+    return ebm
+
+
+def evaluate(model, X, y, class_names=None, model_name="Model"):
+    """
+    Menampilkan akurasi dan classification report.
+    """
+    y_pred = model.predict(X)
+    acc = accuracy_score(y, y_pred)
+    print(f"\n--- Evaluasi Performa: {model_name} ---")
+    print(f"Akurasi: {acc:.4f}")
+    print("\nLaporan Klasifikasi:")
+    print(classification_report(y, y_pred, target_names=class_names))
+    return acc
+
+def get_top_features_from_lasso(lasso_model, feature_names, top_n=200):
+    """
+    Mengambil N fitur terpenting berdasarkan koefisien Lasso.
+    Untuk multi-class, kita ambil nilai absolut maksimum di semua kelas.
+    """
+    # 1. Ambil Koefisien (n_classes, n_features)
+    # Kita ambil nilai absolut karena koefisien negatif (-0.5) sama pentingnya dengan positif (0.5)
+    abs_coefs = np.abs(lasso_model.coef_)
+
+    # 2. Agregasi: Ambil nilai max per fitur di semua kelas
+    # Artinya: "Apakah gen ini penting untuk setidaknya SATU jenis kanker?"
+    importances = np.max(abs_coefs, axis=0)
+
+    # 3. Urutkan dari yang terbesar
+    # argsort mengembalikan indeks, [::-1] membaliknya jadi descending
+    sorted_indices = np.argsort(importances)[::-1]
+
+    # 4. Ambil Top N
+    top_indices = sorted_indices[:top_n]
+    top_feature_names = [feature_names[i] for i in top_indices]
+
+    print(f"✅ Berhasil menyeleksi {top_n} fitur terbaik dari {len(feature_names)} fitur awal.")
+    return top_indices, top_feature_names
