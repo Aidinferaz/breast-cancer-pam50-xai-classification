@@ -1,5 +1,6 @@
 import shap
 import numpy as np
+import torch
 
 
 # ==========================================
@@ -152,3 +153,174 @@ def extract_ebm_explanation(ebm_model, X_val, y_val=None):
     ebm_local = ebm_model.explain_local(X_val, y_val)
     print("✅ Ekstraksi EBM Selesai.")
     return ebm_global, ebm_local
+
+# ==========================================
+# 4. Neural Network EXPLANATION
+# ==========================================
+
+def compute_shap_neural_network(model_wrapper, X_train, X_target, n_background=50, n_samples=10):
+    """
+    Menghitung SHAP values untuk Neural Network menggunakan DeepExplainer atau GradientExplainer.
+    
+    Parameters:
+    -----------
+    model_wrapper : NeuralNetworkWrapper, Model wrapper dengan API predict_proba
+    X_train : array-like, Data training untuk background
+    X_target : array-like, Data yang akan dijelaskan
+    n_background : int, Jumlah sampel background
+    n_samples : int, Jumlah sampel target yang akan diproses
+    
+    Returns:
+    --------
+    explainer : SHAP explainer object
+    shap_values : list of arrays, SHAP values untuk setiap kelas
+    """
+    print(f"--- Menghitung SHAP (Neural Network)... ---")
+    print(f"Background samples: {n_background}, Target samples: {n_samples}")
+    
+    device = model_wrapper.device
+    model = model_wrapper.model_raw
+    model.eval()
+    
+    # Prepare background data
+    background_indices = np.random.choice(len(X_train), min(n_background, len(X_train)), replace=False)
+    background = X_train[background_indices]
+    background_tensor = torch.FloatTensor(background).to(device)
+    
+    # Prepare target data
+    X_target_sub = X_target[:n_samples] if len(X_target) > n_samples else X_target
+    target_tensor = torch.FloatTensor(X_target_sub).to(device)
+    
+    try:
+        # Coba gunakan DeepExplainer (lebih cepat untuk Neural Network)
+        print("Mencoba DeepExplainer...")
+        explainer = shap.DeepExplainer(model, background_tensor)
+        shap_values_raw = explainer.shap_values(target_tensor)
+        print("✅ DeepExplainer berhasil.")
+        
+    except Exception as e:
+        print(f"⚠️ DeepExplainer gagal ({e}), beralih ke GradientExplainer...")
+        try:
+            explainer = shap.GradientExplainer(model, background_tensor)
+            shap_values_raw = explainer.shap_values(target_tensor)
+            print("✅ GradientExplainer berhasil.")
+            
+        except Exception as e2:
+            print(f"⚠️ GradientExplainer gagal ({e2}), beralih ke KernelExplainer...")
+            # Fallback ke KernelExplainer (lebih lambat tapi lebih robust)
+            explainer = shap.KernelExplainer(model_wrapper.predict_proba, background)
+            
+            shap_values_list = []
+            for i in range(len(X_target_sub)):
+                print(f"⏳ Memproses sampel {i + 1}/{len(X_target_sub)}...")
+                sv = explainer.shap_values(X_target_sub[i:i + 1], nsamples=100)
+                shap_values_list.append(sv)
+            
+            # Rekonstruksi output
+            first_sv = shap_values_list[0]
+            shap_values_raw = []
+            if isinstance(first_sv, list):
+                n_classes = len(first_sv)
+                for c in range(n_classes):
+                    class_shap = np.concatenate([s[c] for s in shap_values_list], axis=0)
+                    shap_values_raw.append(class_shap)
+            else:
+                shap_values_raw = np.concatenate(shap_values_list, axis=0)
+            
+            print("✅ KernelExplainer berhasil.")
+    
+    # Format output menjadi list konsisten
+    final_shap_values = _format_nn_shap_values(shap_values_raw, X_target_sub)
+    
+    print(f"✅ Perhitungan SHAP Neural Network selesai. Kelas terdeteksi: {len(final_shap_values)}")
+    return explainer, final_shap_values
+
+
+def _format_nn_shap_values(shap_values_raw, X_target):
+    """
+    Helper function untuk memformat SHAP values dari Neural Network.
+    """
+    n_samples = X_target.shape[0]
+    n_features = X_target.shape[1]
+    
+    # Jika sudah list, kembalikan langsung
+    if isinstance(shap_values_raw, list):
+        formatted = []
+        for sv in shap_values_raw:
+            if isinstance(sv, torch.Tensor):
+                sv = sv.cpu().numpy()
+            formatted.append(sv)
+        return formatted
+    
+    # Jika tensor, konversi ke numpy
+    if isinstance(shap_values_raw, torch.Tensor):
+        shap_values_raw = shap_values_raw.cpu().numpy()
+    
+    # Handle berbagai format dimensi
+    if isinstance(shap_values_raw, np.ndarray):
+        if shap_values_raw.ndim == 3:
+            # Format (N, F, C) -> pecah jadi list
+            n_classes = shap_values_raw.shape[2]
+            return [shap_values_raw[:, :, c] for c in range(n_classes)]
+        elif shap_values_raw.ndim == 2:
+            # Format (N, F) -> wrap dalam list
+            return [shap_values_raw]
+    
+    return shap_values_raw
+
+
+def compute_shap_integrated_gradients(model_wrapper, X_target, baseline=None, n_steps=50):
+    """
+    Menghitung Integrated Gradients sebagai alternatif SHAP untuk Neural Network.
+    Integrated Gradients adalah metode atribusi yang lebih cepat.
+    
+    Parameters:
+    -----------
+    model_wrapper : NeuralNetworkWrapper
+    X_target : array-like, Data yang akan dijelaskan
+    baseline : array-like, Baseline untuk IG (default: zeros)
+    n_steps : int, Jumlah langkah interpolasi
+    
+    Returns:
+    --------
+    attributions : array, Integrated Gradients attributions
+    """
+    print(f"--- Menghitung Integrated Gradients... ---")
+    
+    device = model_wrapper.device
+    model = model_wrapper.model_raw
+    model.eval()
+    
+    X_tensor = torch.FloatTensor(X_target).to(device)
+    X_tensor.requires_grad = True
+    
+    if baseline is None:
+        baseline = torch.zeros_like(X_tensor).to(device)
+    else:
+        baseline = torch.FloatTensor(baseline).to(device)
+    
+    # Interpolasi antara baseline dan input
+    scaled_inputs = [baseline + (float(i) / n_steps) * (X_tensor - baseline) for i in range(n_steps + 1)]
+    
+    # Hitung gradien untuk setiap step
+    gradients = []
+    for scaled_input in scaled_inputs:
+        scaled_input.requires_grad = True
+        output = model(scaled_input)
+        
+        # Untuk multiclass, ambil kelas dengan probabilitas tertinggi
+        target_class = output.argmax(dim=1)
+        selected_output = output.gather(1, target_class.unsqueeze(1)).sum()
+        
+        model.zero_grad()
+        selected_output.backward(retain_graph=True)
+        gradients.append(scaled_input.grad.detach().clone())
+    
+    # Hitung rata-rata gradien
+    avg_gradients = torch.stack(gradients).mean(dim=0)
+    
+    # Integrated Gradients = (input - baseline) * avg_gradients
+    integrated_gradients = (X_tensor - baseline).detach() * avg_gradients
+    
+    print("✅ Perhitungan Integrated Gradients selesai.")
+    return integrated_gradients.cpu().numpy()
