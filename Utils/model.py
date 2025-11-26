@@ -15,6 +15,8 @@ from torch.utils.data import DataLoader, TensorDataset
 def load_dataset(ide="manual", file_path: str = None):
   if ide == "local":
     df = pd.read_csv("G:\My Drive\ITS\Tugas\Semester_5\Biomedical Engineering\Final Project Req\Dataset.csv")
+  elif ide == "local-linux":
+        df = pd.read_csv("/home/ferazzio/Dataset/Dataset.csv")
   elif ide == "colab":
     from google.colab import drive
     drive.mount('/content/drive')
