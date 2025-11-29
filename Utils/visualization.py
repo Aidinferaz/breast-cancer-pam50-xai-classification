@@ -5,10 +5,7 @@ from interpret import show
 import numpy as np
 
 def plot_beeswarm(shap_values, X_data, feature_names, class_names, target_class='all', max_display=15):
-    """
-    Membuat Global Summary Plot (Beeswarm).
-    """
-    # Tentukan index kelas
+    """Create Global Summary Plot (Beeswarm)."""
     indices_to_plot = []
     if target_class == 'all':
         indices_to_plot = range(len(class_names))
@@ -18,42 +15,36 @@ def plot_beeswarm(shap_values, X_data, feature_names, class_names, target_class=
         if target_class in class_names:
             indices_to_plot = [list(class_names).index(target_class)]
         else:
-            print(f"❌ Kelas '{target_class}' tidak ditemukan.")
+            print(f"❌ Class '{target_class}' not found.")
             return
 
     for idx in indices_to_plot:
         label = class_names[idx]
-        # Panggil fungsi fix dimensions dari explainers.py
         matrix = explainers.fix_shap_dimensions(shap_values, X_data, idx)
 
         if matrix is not None:
             plt.figure(figsize=(10, 6))
-            print(f"Generasi Plot Summary untuk: {label}...")
+            print(f"Generating Summary Plot for: {label}...")
             shap.summary_plot(matrix, X_data, feature_names=feature_names, show=False, max_display=max_display)
             plt.title(f"Feature Importance: {label}", fontsize=14)
             plt.show()
         else:
-            print(f"⚠️ Gagal memproses dimensi untuk kelas {label}")
+            print(f"⚠️ Failed to process dimensions for class {label}")
 
 
 def plot_waterfall(shap_values, explainer, X_data, feature_names, class_names, sample_idx=0, class_idx=0,
                    max_display=10):
-    """
-    Membuat Local Waterfall Plot untuk satu pasien.
-    """
-    # 1. Ambil Matrix SHAP yang benar dari explainers.py
+    """Create Local Waterfall Plot for a single patient."""
     shap_matrix = explainers.fix_shap_dimensions(shap_values, X_data, class_idx)
 
     if shap_matrix is None:
         return
 
-    # 2. Ambil Base Value (Expected Value)
     if hasattr(explainer.expected_value, '__iter__'):
         base_val = explainer.expected_value[class_idx]
     else:
         base_val = explainer.expected_value
 
-    # 3. Buat Objek Explanation
     try:
         explanation = shap.Explanation(
             values=shap_matrix[sample_idx],
@@ -63,57 +54,37 @@ def plot_waterfall(shap_values, explainer, X_data, feature_names, class_names, s
         )
 
         target_label = class_names[class_idx]
-        print(f"\n--- Analisis Lokal Pasien #{sample_idx} (Kelas Target: {target_label}) ---")
+        print(f"\n--- Local Analysis Patient #{sample_idx} (Target Class: {target_label}) ---")
 
         shap.plots.waterfall(explanation, max_display=max_display)
 
     except Exception as e:
-        print(f"❌ Gagal membuat plot waterfall: {e}")
+        print(f"❌ Failed to create waterfall plot: {e}")
+
 def plot_ebm_dashboard(ebm_global, title="EBM Global Explanation"):
-    """
-    Menampilkan Dashboard Interaktif EBM.
-    Fitur ini akan membuka widget interaktif di Jupyter Notebook.
-    """
-    print(f"Membuka Dashboard: {title}...")
-    # show() dari library interpret akan merender widget
+    """Display Interactive EBM Dashboard (works in Jupyter Notebook)."""
+    print(f"Opening Dashboard: {title}...")
     show(ebm_global)
 
 def plot_ebm_feature_curve(ebm_global, feature_index=0):
-    """
-    Menampilkan grafik kurva fungsi (shape function) untuk fitur tertentu.
-    Ini menunjukkan bagaimana risiko berubah seiring nilai gen naik/turun.
-    """
-    # Mengambil data grafik dari objek penjelasan
+    """Display shape function curve for a specific feature."""
     data = ebm_global.visualize(feature_index)
-    return data # Di notebook, objek ini akan otomatis ter-render
+    return data
 
 def plot_nn_feature_importance(shap_values, feature_names, class_names, top_n=20):
-    """
-    Membuat bar plot untuk feature importance dari Neural Network.
-    Mengagregasi SHAP values dari semua kelas.
+    """Create bar plot for Neural Network feature importance."""
+    print("Generating Feature Importance Plot for Neural Network...")
     
-    Parameters:
-    -----------
-    shap_values : list of arrays, SHAP values per kelas
-    feature_names : list, Nama fitur
-    class_names : list, Nama kelas
-    top_n : int, Jumlah fitur teratas yang ditampilkan
-    """
-    print(f"Generasi Feature Importance Plot untuk Neural Network...")
-    
-    # Agregasi: rata-rata absolute SHAP value per fitur (across all classes)
     if isinstance(shap_values, list):
         all_shap = np.stack([np.abs(sv).mean(axis=0) for sv in shap_values])
         mean_importance = all_shap.mean(axis=0)
     else:
         mean_importance = np.abs(shap_values).mean(axis=0)
     
-    # Sort dan ambil top N
     sorted_idx = np.argsort(mean_importance)[::-1][:top_n]
     sorted_importance = mean_importance[sorted_idx]
     sorted_names = [feature_names[i] for i in sorted_idx]
     
-    # Plot
     plt.figure(figsize=(10, 8))
     colors = plt.cm.RdYlBu_r(np.linspace(0.2, 0.8, len(sorted_idx)))
     plt.barh(range(len(sorted_idx)), sorted_importance[::-1], color=colors[::-1])
@@ -125,18 +96,7 @@ def plot_nn_feature_importance(shap_values, feature_names, class_names, top_n=20
 
 
 def plot_nn_beeswarm(shap_values, X_data, feature_names, class_names, target_class='all', max_display=15):
-    """
-    Membuat Global Summary Plot (Beeswarm) untuk Neural Network.
-    
-    Parameters:
-    -----------
-    shap_values : list of arrays, SHAP values dari Neural Network
-    X_data : array-like, Data fitur
-    feature_names : list, Nama fitur
-    class_names : list, Nama kelas
-    target_class : str/int, Kelas target ('all' untuk semua kelas)
-    max_display : int, Jumlah fitur maksimum yang ditampilkan
-    """
+    """Create Global Summary Plot (Beeswarm) for Neural Network."""
     indices_to_plot = []
     if target_class == 'all':
         indices_to_plot = range(len(class_names))
@@ -146,7 +106,7 @@ def plot_nn_beeswarm(shap_values, X_data, feature_names, class_names, target_cla
         if target_class in class_names:
             indices_to_plot = [list(class_names).index(target_class)]
         else:
-            print(f"❌ Kelas '{target_class}' tidak ditemukan.")
+            print(f"❌ Class '{target_class}' not found.")
             return
 
     for idx in indices_to_plot:
@@ -155,43 +115,28 @@ def plot_nn_beeswarm(shap_values, X_data, feature_names, class_names, target_cla
 
         if matrix is not None:
             plt.figure(figsize=(10, 6))
-            print(f"Generasi Plot Summary untuk: {label} (Neural Network)...")
+            print(f"Generating Summary Plot for: {label} (Neural Network)...")
             shap.summary_plot(matrix, X_data, feature_names=feature_names, show=False, max_display=max_display)
             plt.title(f"Neural Network Feature Importance: {label}", fontsize=14)
             plt.show()
         else:
-            print(f"⚠️ Gagal memproses dimensi untuk kelas {label}")
+            print(f"⚠️ Failed to process dimensions for class {label}")
 
 
 def plot_nn_waterfall(shap_values, explainer, X_data, feature_names, class_names, 
                       sample_idx=0, class_idx=0, max_display=10):
-    """
-    Membuat Local Waterfall Plot untuk Neural Network.
-    
-    Parameters:
-    -----------
-    shap_values : list of arrays, SHAP values
-    explainer : SHAP explainer object
-    X_data : array-like, Data fitur
-    feature_names : list, Nama fitur
-    class_names : list, Nama kelas
-    sample_idx : int, Index sampel yang akan dijelaskan
-    class_idx : int, Index kelas target
-    max_display : int, Jumlah fitur maksimum
-    """
+    """Create Local Waterfall Plot for Neural Network."""
     shap_matrix = explainers.fix_shap_dimensions(shap_values, X_data, class_idx)
 
     if shap_matrix is None:
         return
 
-    # Ambil Base Value
     if hasattr(explainer, 'expected_value'):
         if hasattr(explainer.expected_value, '__iter__'):
             base_val = explainer.expected_value[class_idx]
         else:
             base_val = explainer.expected_value
     else:
-        # Untuk DeepExplainer, expected_value mungkin tidak ada
         base_val = 0
 
     try:
@@ -203,35 +148,22 @@ def plot_nn_waterfall(shap_values, explainer, X_data, feature_names, class_names
         )
 
         target_label = class_names[class_idx]
-        print(f"\n--- Analisis Lokal Pasien #{sample_idx} (Neural Network - Kelas: {target_label}) ---")
+        print(f"\n--- Local Analysis Patient #{sample_idx} (Neural Network - Class: {target_label}) ---")
 
         shap.plots.waterfall(explanation, max_display=max_display)
 
     except Exception as e:
-        print(f"❌ Gagal membuat plot waterfall: {e}")
+        print(f"❌ Failed to create waterfall plot: {e}")
 
 
 def plot_nn_force(shap_values, explainer, X_data, feature_names, class_names,
                   sample_idx=0, class_idx=0):
-    """
-    Membuat Force Plot untuk Neural Network (visualisasi alternatif).
-    
-    Parameters:
-    -----------
-    shap_values : list of arrays, SHAP values
-    explainer : SHAP explainer object
-    X_data : array-like, Data fitur
-    feature_names : list, Nama fitur
-    class_names : list, Nama kelas
-    sample_idx : int, Index sampel
-    class_idx : int, Index kelas target
-    """
+    """Create Force Plot for Neural Network."""
     shap_matrix = explainers.fix_shap_dimensions(shap_values, X_data, class_idx)
 
     if shap_matrix is None:
         return
 
-    # Ambil Base Value
     if hasattr(explainer, 'expected_value'):
         if hasattr(explainer.expected_value, '__iter__'):
             base_val = explainer.expected_value[class_idx]
@@ -241,7 +173,7 @@ def plot_nn_force(shap_values, explainer, X_data, feature_names, class_names,
         base_val = 0
 
     target_label = class_names[class_idx]
-    print(f"\n--- Force Plot Pasien #{sample_idx} (Neural Network - Kelas: {target_label}) ---")
+    print(f"\n--- Force Plot Patient #{sample_idx} (Neural Network - Class: {target_label}) ---")
 
     shap.initjs()
     force_plot = shap.force_plot(
@@ -254,26 +186,15 @@ def plot_nn_force(shap_values, explainer, X_data, feature_names, class_names,
 
 
 def plot_integrated_gradients(ig_values, feature_names, sample_idx=0, top_n=15):
-    """
-    Visualisasi Integrated Gradients untuk Neural Network.
-    
-    Parameters:
-    -----------
-    ig_values : array, Integrated Gradients attributions
-    feature_names : list, Nama fitur
-    sample_idx : int, Index sampel
-    top_n : int, Jumlah fitur teratas
-    """
-    print(f"\n--- Integrated Gradients untuk Sampel #{sample_idx} ---")
+    """Visualize Integrated Gradients for Neural Network."""
+    print(f"\n--- Integrated Gradients for Sample #{sample_idx} ---")
     
     sample_ig = ig_values[sample_idx]
     
-    # Sort berdasarkan absolute value
     sorted_idx = np.argsort(np.abs(sample_ig))[::-1][:top_n]
     sorted_ig = sample_ig[sorted_idx]
     sorted_names = [feature_names[i] for i in sorted_idx]
     
-    # Plot
     plt.figure(figsize=(10, 6))
     colors = ['red' if x > 0 else 'blue' for x in sorted_ig]
     plt.barh(range(len(sorted_idx)), sorted_ig[::-1], color=colors[::-1])
@@ -290,18 +211,7 @@ def plot_integrated_gradients(ig_values, feature_names, sample_idx=0, top_n=15):
 # ==========================================
 
 def plot_xgboost_beeswarm(shap_values, X_data, feature_names, class_names, target_class='all', max_display=15):
-    """
-    Membuat Global Summary Plot (Beeswarm) khusus untuk XGBoost.
-    
-    Parameters:
-    -----------
-    shap_values : array/list, SHAP values dari XGBoost
-    X_data : array-like, Data fitur
-    feature_names : list, Nama fitur
-    class_names : list, Nama kelas
-    target_class : str/int, Kelas target ('all' untuk semua kelas)
-    max_display : int, Jumlah fitur maksimum yang ditampilkan
-    """
+    """Create Global Summary Plot (Beeswarm) for XGBoost."""
     indices_to_plot = []
     if target_class == 'all':
         indices_to_plot = range(len(class_names))
@@ -311,7 +221,7 @@ def plot_xgboost_beeswarm(shap_values, X_data, feature_names, class_names, targe
         if target_class in class_names:
             indices_to_plot = [list(class_names).index(target_class)]
         else:
-            print(f"❌ Kelas '{target_class}' tidak ditemukan.")
+            print(f"❌ Class '{target_class}' not found.")
             return
 
     for idx in indices_to_plot:
@@ -320,35 +230,23 @@ def plot_xgboost_beeswarm(shap_values, X_data, feature_names, class_names, targe
 
         if matrix is not None:
             plt.figure(figsize=(10, 6))
-            print(f"Generasi Plot Summary untuk: {label} (XGBoost)...")
+            print(f"Generating Summary Plot for: {label} (XGBoost)...")
             shap.summary_plot(matrix, X_data, feature_names=feature_names, show=False, max_display=max_display)
             plt.title(f"XGBoost Feature Importance: {label}", fontsize=14)
             plt.show()
         else:
-            print(f"⚠️ Gagal memproses dimensi untuk kelas {label}")
+            print(f"⚠️ Failed to process dimensions for class {label}")
 
 
 def plot_xgboost_bar(shap_values, X_data, feature_names, class_names, class_idx=0, max_display=15):
-    """
-    Membuat Bar Plot untuk feature importance XGBoost berdasarkan SHAP.
-    
-    Parameters:
-    -----------
-    shap_values : array/list, SHAP values
-    X_data : array-like, Data fitur
-    feature_names : list, Nama fitur
-    class_names : list, Nama kelas
-    class_idx : int, Index kelas target
-    max_display : int, Jumlah fitur maksimum
-    """
+    """Create Bar Plot for XGBoost feature importance based on SHAP."""
     label = class_names[class_idx]
     matrix = explainers.fix_shap_dimensions(shap_values, X_data, class_idx)
     
     if matrix is None:
-        print(f"⚠️ Gagal memproses dimensi untuk kelas {label}")
+        print(f"⚠️ Failed to process dimensions for class {label}")
         return
     
-    # Hitung mean absolute SHAP value per fitur
     mean_abs_shap = np.abs(matrix).mean(axis=0)
     sorted_idx = np.argsort(mean_abs_shap)[::-1][:max_display]
     
@@ -364,26 +262,12 @@ def plot_xgboost_bar(shap_values, X_data, feature_names, class_names, class_idx=
 
 def plot_xgboost_waterfall(shap_values, explainer, X_data, feature_names, class_names, 
                            sample_idx=0, class_idx=0, max_display=10):
-    """
-    Membuat Local Waterfall Plot untuk XGBoost.
-    
-    Parameters:
-    -----------
-    shap_values : array/list, SHAP values
-    explainer : SHAP explainer object
-    X_data : array-like, Data fitur
-    feature_names : list, Nama fitur
-    class_names : list, Nama kelas
-    sample_idx : int, Index sampel
-    class_idx : int, Index kelas target
-    max_display : int, Jumlah fitur maksimum
-    """
+    """Create Local Waterfall Plot for XGBoost."""
     shap_matrix = explainers.fix_shap_dimensions(shap_values, X_data, class_idx)
 
     if shap_matrix is None:
         return
 
-    # Ambil Base Value
     if hasattr(explainer, 'expected_value'):
         if hasattr(explainer.expected_value, '__iter__'):
             base_val = explainer.expected_value[class_idx]
@@ -401,29 +285,17 @@ def plot_xgboost_waterfall(shap_values, explainer, X_data, feature_names, class_
         )
 
         target_label = class_names[class_idx]
-        print(f"\n--- Analisis Lokal Pasien #{sample_idx} (XGBoost - Kelas: {target_label}) ---")
+        print(f"\n--- Local Analysis Patient #{sample_idx} (XGBoost - Class: {target_label}) ---")
 
         shap.plots.waterfall(explanation, max_display=max_display)
 
     except Exception as e:
-        print(f"❌ Gagal membuat plot waterfall: {e}")
+        print(f"❌ Failed to create waterfall plot: {e}")
 
 
 def plot_xgboost_force(shap_values, explainer, X_data, feature_names, class_names,
                        sample_idx=0, class_idx=0):
-    """
-    Membuat Force Plot untuk XGBoost.
-    
-    Parameters:
-    -----------
-    shap_values : array/list, SHAP values
-    explainer : SHAP explainer object
-    X_data : array-like, Data fitur
-    feature_names : list, Nama fitur
-    class_names : list, Nama kelas
-    sample_idx : int, Index sampel
-    class_idx : int, Index kelas target
-    """
+    """Create Force Plot for XGBoost."""
     shap_matrix = explainers.fix_shap_dimensions(shap_values, X_data, class_idx)
 
     if shap_matrix is None:
@@ -438,7 +310,7 @@ def plot_xgboost_force(shap_values, explainer, X_data, feature_names, class_name
         base_val = 0
 
     target_label = class_names[class_idx]
-    print(f"\n--- Force Plot Pasien #{sample_idx} (XGBoost - Kelas: {target_label}) ---")
+    print(f"\n--- Force Plot Patient #{sample_idx} (XGBoost - Class: {target_label}) ---")
 
     shap.initjs()
     force_plot = shap.force_plot(
@@ -452,26 +324,12 @@ def plot_xgboost_force(shap_values, explainer, X_data, feature_names, class_name
 
 def plot_xgboost_dependence(shap_values, X_data, feature_names, class_names, 
                             feature_idx, interaction_idx=None, class_idx=0):
-    """
-    Membuat Dependence Plot untuk XGBoost.
-    Menunjukkan bagaimana SHAP value suatu fitur berubah seiring nilai fitur tersebut.
-    
-    Parameters:
-    -----------
-    shap_values : array/list, SHAP values
-    X_data : array-like, Data fitur
-    feature_names : list, Nama fitur
-    class_names : list, Nama kelas
-    feature_idx : int/str, Index atau nama fitur utama
-    interaction_idx : int/str, Index atau nama fitur interaksi (opsional, 'auto' untuk otomatis)
-    class_idx : int, Index kelas target
-    """
+    """Create Dependence Plot for XGBoost showing how SHAP value changes with feature value."""
     shap_matrix = explainers.fix_shap_dimensions(shap_values, X_data, class_idx)
 
     if shap_matrix is None:
         return
 
-    # Konversi nama fitur ke index jika perlu
     if isinstance(feature_idx, str):
         feature_idx = list(feature_names).index(feature_idx)
     
@@ -482,7 +340,7 @@ def plot_xgboost_dependence(shap_values, X_data, feature_names, class_names,
     feature_name = feature_names[feature_idx]
     
     plt.figure(figsize=(10, 6))
-    print(f"Generasi Dependence Plot untuk: {feature_name} (Kelas: {target_label})...")
+    print(f"Generating Dependence Plot for: {feature_name} (Class: {target_label})...")
     
     shap.dependence_plot(
         feature_idx, 
@@ -498,33 +356,18 @@ def plot_xgboost_dependence(shap_values, X_data, feature_names, class_names,
 
 def plot_xgboost_interaction_heatmap(shap_interaction_values, feature_names, class_names,
                                      class_idx=0, top_n=10):
-    """
-    Membuat Heatmap untuk SHAP Interaction Values.
+    """Create Heatmap for SHAP Interaction Values."""
+    print(f"Generating Interaction Heatmap for class: {class_names[class_idx]}...")
     
-    Parameters:
-    -----------
-    shap_interaction_values : array, SHAP interaction values
-    feature_names : list, Nama fitur
-    class_names : list, Nama kelas
-    class_idx : int, Index kelas target (untuk multiclass)
-    top_n : int, Jumlah fitur teratas yang ditampilkan
-    """
-    print(f"Generasi Interaction Heatmap untuk kelas: {class_names[class_idx]}...")
-    
-    # Handle multiclass
     if isinstance(shap_interaction_values, list):
         interaction_matrix = shap_interaction_values[class_idx]
     else:
         interaction_matrix = shap_interaction_values
     
-    # Rata-rata absolute interaction across samples
     mean_interaction = np.abs(interaction_matrix).mean(axis=0)
-    
-    # Ambil top N fitur berdasarkan total interaction
     total_interaction = mean_interaction.sum(axis=1)
     top_indices = np.argsort(total_interaction)[::-1][:top_n]
     
-    # Subset matrix
     subset_matrix = mean_interaction[np.ix_(top_indices, top_indices)]
     subset_names = [feature_names[i] for i in top_indices]
     
@@ -539,16 +382,8 @@ def plot_xgboost_interaction_heatmap(shap_interaction_values, feature_names, cla
 
 
 def plot_xgboost_importance_comparison(comparison_results, feature_names, top_n=15):
-    """
-    Membuat plot perbandingan berbagai metode feature importance.
-    
-    Parameters:
-    -----------
-    comparison_results : dict, Output dari compare_xgboost_importance_methods()
-    feature_names : list, Nama fitur
-    top_n : int, Jumlah fitur teratas
-    """
-    print("Generasi Comparison Plot untuk Feature Importance...")
+    """Create comparison plot for different feature importance methods."""
+    print("Generating Comparison Plot for Feature Importance...")
     
     fig, axes = plt.subplots(1, 3, figsize=(15, 6))
     methods = ['xgb_gain', 'xgb_weight', 'shap']
@@ -561,7 +396,6 @@ def plot_xgboost_importance_comparison(comparison_results, feature_names, top_n=
         names = [item[0] for item in sorted_items]
         values = [item[1] for item in sorted_items]
         
-        # Normalize
         if max(values) > 0:
             values = [v / max(values) for v in values]
         
@@ -578,21 +412,7 @@ def plot_xgboost_importance_comparison(comparison_results, feature_names, top_n=
 
 def plot_xgboost_decision_plot(shap_values, explainer, X_data, feature_names, class_names,
                                sample_indices=None, class_idx=0, max_display=15):
-    """
-    Membuat Decision Plot untuk XGBoost.
-    Menunjukkan bagaimana prediksi terbentuk dari base value ke prediksi akhir.
-    
-    Parameters:
-    -----------
-    shap_values : array/list, SHAP values
-    explainer : SHAP explainer object
-    X_data : array-like, Data fitur
-    feature_names : list, Nama fitur
-    class_names : list, Nama kelas
-    sample_indices : list, Index sampel yang akan ditampilkan (default: 10 pertama)
-    class_idx : int, Index kelas target
-    max_display : int, Jumlah fitur maksimum
-    """
+    """Create Decision Plot for XGBoost showing prediction path from base value."""
     shap_matrix = explainers.fix_shap_dimensions(shap_values, X_data, class_idx)
 
     if shap_matrix is None:
@@ -610,7 +430,7 @@ def plot_xgboost_decision_plot(shap_values, explainer, X_data, feature_names, cl
         sample_indices = list(range(min(10, len(X_data))))
     
     target_label = class_names[class_idx]
-    print(f"\n--- Decision Plot (XGBoost - Kelas: {target_label}) ---")
+    print(f"\n--- Decision Plot (XGBoost - Class: {target_label}) ---")
 
     plt.figure(figsize=(10, 8))
     shap.decision_plot(
@@ -625,19 +445,11 @@ def plot_xgboost_decision_plot(shap_values, explainer, X_data, feature_names, cl
 
 
 def plot_xgboost_tree(model, tree_index=0, figsize=(20, 10)):
-    """
-    Visualisasi struktur tree dari XGBoost.
-    
-    Parameters:
-    -----------
-    model : XGBoost model
-    tree_index : int, Index tree yang akan divisualisasi
-    figsize : tuple, Ukuran figure
-    """
+    """Visualize XGBoost tree structure."""
     try:
         import xgboost as xgb
         
-        print(f"Generasi Tree Plot untuk tree #{tree_index}...")
+        print(f"Generating Tree Plot for tree #{tree_index}...")
         
         fig, ax = plt.subplots(figsize=figsize)
         xgb.plot_tree(model, num_trees=tree_index, ax=ax)
@@ -646,6 +458,6 @@ def plot_xgboost_tree(model, tree_index=0, figsize=(20, 10)):
         plt.show()
         
     except ImportError:
-        print("❌ Library xgboost diperlukan untuk plot_xgboost_tree")
+        print("❌ xgboost library required for plot_xgboost_tree")
     except Exception as e:
-        print(f"❌ Gagal membuat tree plot: {e}")
+        print(f"❌ Failed to create tree plot: {e}")
