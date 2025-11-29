@@ -324,3 +324,182 @@ def compute_shap_integrated_gradients(model_wrapper, X_target, baseline=None, n_
     
     print("✅ Perhitungan Integrated Gradients selesai.")
     return integrated_gradients.cpu().numpy()
+
+
+# ==========================================
+# 5. XGBOOST EXPLANATION
+# ==========================================
+
+def compute_shap_xgboost(model, X_target, X_train=None, use_tree_explainer=True):
+    """
+    Menghitung SHAP values khusus untuk XGBoost dengan optimasi.
+    
+    Parameters:
+    -----------
+    model : XGBoost model (Classifier atau Regressor)
+    X_target : array-like, Data yang akan dijelaskan
+    X_train : array-like, Data training (opsional, untuk background)
+    use_tree_explainer : bool, Gunakan TreeExplainer (lebih cepat) atau KernelExplainer
+    
+    Returns:
+    --------
+    explainer : SHAP explainer object
+    shap_values : array/list, SHAP values
+    """
+    print(f"--- Menghitung SHAP (XGBoost)... ---")
+    
+    if use_tree_explainer:
+        explainer = shap.TreeExplainer(model)
+        shap_values = explainer.shap_values(X_target)
+    else:
+        if X_train is None:
+            raise ValueError("X_train diperlukan untuk KernelExplainer")
+        background = shap.sample(X_train, min(100, len(X_train)))
+        explainer = shap.KernelExplainer(model.predict_proba, background)
+        shap_values = explainer.shap_values(X_target)
+    
+    print("✅ Perhitungan SHAP XGBoost selesai.")
+    return explainer, shap_values
+
+
+def compute_shap_xgboost_interactions(model, X_target, max_samples=100):
+    """
+    Menghitung SHAP interaction values untuk XGBoost.
+    Menunjukkan bagaimana fitur berinteraksi satu sama lain.
+    
+    Parameters:
+    -----------
+    model : XGBoost model
+    X_target : array-like, Data yang akan dijelaskan
+    max_samples : int, Maksimum sampel (interaction values mahal secara komputasi)
+    
+    Returns:
+    --------
+    explainer : SHAP TreeExplainer
+    shap_interaction_values : array, Shape (n_samples, n_features, n_features) atau list untuk multiclass
+    """
+    print(f"--- Menghitung SHAP Interaction Values (XGBoost)... ---")
+    print(f"⚠️ Proses ini membutuhkan waktu lebih lama...")
+    
+    explainer = shap.TreeExplainer(model)
+    
+    # Batasi jumlah sampel
+    X_subset = X_target[:max_samples] if len(X_target) > max_samples else X_target
+    
+    shap_interaction_values = explainer.shap_interaction_values(X_subset)
+    
+    print(f"✅ Perhitungan SHAP Interaction selesai. Shape: {np.array(shap_interaction_values).shape}")
+    return explainer, shap_interaction_values
+
+
+def get_xgboost_feature_importance(model, importance_type='weight'):
+    """
+    Mengambil feature importance bawaan XGBoost.
+    
+    Parameters:
+    -----------
+    model : XGBoost model
+    importance_type : str, Tipe importance:
+        - 'weight': Jumlah kemunculan fitur di semua tree
+        - 'gain': Rata-rata gain saat fitur digunakan untuk split
+        - 'cover': Rata-rata coverage saat fitur digunakan
+        - 'total_gain': Total gain
+        - 'total_cover': Total coverage
+    
+    Returns:
+    --------
+    importance_dict : dict, {feature_name: importance_score}
+    """
+    print(f"--- Mengambil Feature Importance XGBoost ({importance_type})... ---")
+    
+    try:
+        # Untuk XGBClassifier/XGBRegressor
+        importance_dict = model.get_booster().get_score(importance_type=importance_type)
+    except AttributeError:
+        # Untuk Booster langsung
+        importance_dict = model.get_score(importance_type=importance_type)
+    
+    print(f"✅ Ditemukan {len(importance_dict)} fitur dengan importance > 0")
+    return importance_dict
+
+
+def compare_xgboost_importance_methods(model, X_target, feature_names):
+    """
+    Membandingkan berbagai metode feature importance untuk XGBoost.
+    
+    Parameters:
+    -----------
+    model : XGBoost model
+    X_target : array-like, Data target
+    feature_names : list, Nama fitur
+    
+    Returns:
+    --------
+    comparison_df : dict, Perbandingan importance dari berbagai metode
+    """
+    print("--- Membandingkan Metode Feature Importance XGBoost... ---")
+    
+    results = {}
+    
+    # 1. Native XGBoost Importance (Gain)
+    gain_importance = get_xgboost_feature_importance(model, 'gain')
+    results['xgb_gain'] = {f: gain_importance.get(f, 0) for f in feature_names}
+    
+    # 2. Native XGBoost Importance (Weight)
+    weight_importance = get_xgboost_feature_importance(model, 'weight')
+    results['xgb_weight'] = {f: weight_importance.get(f, 0) for f in feature_names}
+    
+    # 3. SHAP Values
+    _, shap_values = compute_shap_xgboost(model, X_target)
+    
+    if isinstance(shap_values, list):
+        # Multiclass: rata-rata absolute SHAP across classes
+        mean_shap = np.mean([np.abs(sv).mean(axis=0) for sv in shap_values], axis=0)
+    else:
+        mean_shap = np.abs(shap_values).mean(axis=0)
+    
+    results['shap'] = {feature_names[i]: mean_shap[i] for i in range(len(feature_names))}
+    
+    print("✅ Perbandingan selesai.")
+    return results
+
+
+def extract_xgboost_rules(model, feature_names, max_trees=5, max_depth=3):
+    """
+    Mengekstrak aturan (rules) dari XGBoost trees untuk interpretabilitas.
+    
+    Parameters:
+    -----------
+    model : XGBoost model
+    feature_names : list, Nama fitur
+    max_trees : int, Jumlah tree yang diekstrak
+    max_depth : int, Kedalaman maksimum rule
+    
+    Returns:
+    --------
+    rules : list of str, Aturan-aturan yang diekstrak
+    """
+    print(f"--- Mengekstrak Rules dari XGBoost (max {max_trees} trees)... ---")
+    
+    try:
+        booster = model.get_booster()
+    except AttributeError:
+        booster = model
+    
+    # Dump trees ke format text
+    trees_dump = booster.get_dump(with_stats=True)
+    
+    rules = []
+    for i, tree in enumerate(trees_dump[:max_trees]):
+        rules.append(f"\n=== Tree {i} ===")
+        # Parse tree structure
+        lines = tree.split('\n')
+        for line in lines[:max_depth * 3]:  # Approximate depth limit
+            if line.strip():
+                # Replace feature indices with names if possible
+                for j, fname in enumerate(feature_names):
+                    line = line.replace(f'f{j}', fname)
+                rules.append(line)
+    
+    print(f"✅ Ekstraksi selesai. Total {len(rules)} baris rules.")
+    return rules

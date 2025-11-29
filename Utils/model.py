@@ -10,6 +10,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
+import xgboost as xgb
 
 
 def load_dataset(ide="manual", file_path: str = None):
@@ -324,3 +325,33 @@ def train_neural_network(X_train, y_train, X_val=None, y_val=None,
     wrapper.device = device
     
     return wrapper
+
+def train_xgboost(X_train, y_train, X_val=None, y_val=None,
+                  n_estimators=100, learning_rate=0.1, max_depth=6,
+                  random_state=42):
+    """
+    Melatih model XGBoost untuk klasifikasi.
+    """
+    print(f"Training XGBoost (Black-Box)...")
+    model = xgb.XGBClassifier(
+        n_estimators=n_estimators,
+        learning_rate=learning_rate,
+        max_depth=max_depth,
+        use_label_encoder=False,
+        eval_metric='mlogloss',
+        random_state=random_state,
+        n_jobs=-1
+    )
+    
+    eval_set = None
+    if X_val is not None and y_val is not None:
+        eval_set = [(X_val, y_val)]
+    
+    model.fit(
+        X_train, y_train,
+        eval_set=eval_set,
+        verbose=True
+    )
+    
+    print("Training XGBoost Selesai.")
+    return model

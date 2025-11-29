@@ -283,3 +283,369 @@ def plot_integrated_gradients(ig_values, feature_names, sample_idx=0, top_n=15):
     plt.axvline(x=0, color='black', linestyle='-', linewidth=0.5)
     plt.tight_layout()
     plt.show()
+
+
+# ==========================================
+# XGBOOST VISUALIZATION
+# ==========================================
+
+def plot_xgboost_beeswarm(shap_values, X_data, feature_names, class_names, target_class='all', max_display=15):
+    """
+    Membuat Global Summary Plot (Beeswarm) khusus untuk XGBoost.
+    
+    Parameters:
+    -----------
+    shap_values : array/list, SHAP values dari XGBoost
+    X_data : array-like, Data fitur
+    feature_names : list, Nama fitur
+    class_names : list, Nama kelas
+    target_class : str/int, Kelas target ('all' untuk semua kelas)
+    max_display : int, Jumlah fitur maksimum yang ditampilkan
+    """
+    indices_to_plot = []
+    if target_class == 'all':
+        indices_to_plot = range(len(class_names))
+    elif isinstance(target_class, int):
+        indices_to_plot = [target_class]
+    elif isinstance(target_class, str):
+        if target_class in class_names:
+            indices_to_plot = [list(class_names).index(target_class)]
+        else:
+            print(f"❌ Kelas '{target_class}' tidak ditemukan.")
+            return
+
+    for idx in indices_to_plot:
+        label = class_names[idx]
+        matrix = explainers.fix_shap_dimensions(shap_values, X_data, idx)
+
+        if matrix is not None:
+            plt.figure(figsize=(10, 6))
+            print(f"Generasi Plot Summary untuk: {label} (XGBoost)...")
+            shap.summary_plot(matrix, X_data, feature_names=feature_names, show=False, max_display=max_display)
+            plt.title(f"XGBoost Feature Importance: {label}", fontsize=14)
+            plt.show()
+        else:
+            print(f"⚠️ Gagal memproses dimensi untuk kelas {label}")
+
+
+def plot_xgboost_bar(shap_values, X_data, feature_names, class_names, class_idx=0, max_display=15):
+    """
+    Membuat Bar Plot untuk feature importance XGBoost berdasarkan SHAP.
+    
+    Parameters:
+    -----------
+    shap_values : array/list, SHAP values
+    X_data : array-like, Data fitur
+    feature_names : list, Nama fitur
+    class_names : list, Nama kelas
+    class_idx : int, Index kelas target
+    max_display : int, Jumlah fitur maksimum
+    """
+    label = class_names[class_idx]
+    matrix = explainers.fix_shap_dimensions(shap_values, X_data, class_idx)
+    
+    if matrix is None:
+        print(f"⚠️ Gagal memproses dimensi untuk kelas {label}")
+        return
+    
+    # Hitung mean absolute SHAP value per fitur
+    mean_abs_shap = np.abs(matrix).mean(axis=0)
+    sorted_idx = np.argsort(mean_abs_shap)[::-1][:max_display]
+    
+    plt.figure(figsize=(10, 6))
+    colors = plt.cm.Reds(np.linspace(0.3, 0.9, len(sorted_idx)))[::-1]
+    plt.barh(range(len(sorted_idx)), mean_abs_shap[sorted_idx][::-1], color=colors)
+    plt.yticks(range(len(sorted_idx)), [feature_names[i] for i in sorted_idx][::-1])
+    plt.xlabel('Mean |SHAP Value|')
+    plt.title(f'XGBoost Feature Importance (SHAP): {label}', fontsize=14)
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_xgboost_waterfall(shap_values, explainer, X_data, feature_names, class_names, 
+                           sample_idx=0, class_idx=0, max_display=10):
+    """
+    Membuat Local Waterfall Plot untuk XGBoost.
+    
+    Parameters:
+    -----------
+    shap_values : array/list, SHAP values
+    explainer : SHAP explainer object
+    X_data : array-like, Data fitur
+    feature_names : list, Nama fitur
+    class_names : list, Nama kelas
+    sample_idx : int, Index sampel
+    class_idx : int, Index kelas target
+    max_display : int, Jumlah fitur maksimum
+    """
+    shap_matrix = explainers.fix_shap_dimensions(shap_values, X_data, class_idx)
+
+    if shap_matrix is None:
+        return
+
+    # Ambil Base Value
+    if hasattr(explainer, 'expected_value'):
+        if hasattr(explainer.expected_value, '__iter__'):
+            base_val = explainer.expected_value[class_idx]
+        else:
+            base_val = explainer.expected_value
+    else:
+        base_val = 0
+
+    try:
+        explanation = shap.Explanation(
+            values=shap_matrix[sample_idx],
+            base_values=base_val,
+            data=X_data[sample_idx],
+            feature_names=feature_names
+        )
+
+        target_label = class_names[class_idx]
+        print(f"\n--- Analisis Lokal Pasien #{sample_idx} (XGBoost - Kelas: {target_label}) ---")
+
+        shap.plots.waterfall(explanation, max_display=max_display)
+
+    except Exception as e:
+        print(f"❌ Gagal membuat plot waterfall: {e}")
+
+
+def plot_xgboost_force(shap_values, explainer, X_data, feature_names, class_names,
+                       sample_idx=0, class_idx=0):
+    """
+    Membuat Force Plot untuk XGBoost.
+    
+    Parameters:
+    -----------
+    shap_values : array/list, SHAP values
+    explainer : SHAP explainer object
+    X_data : array-like, Data fitur
+    feature_names : list, Nama fitur
+    class_names : list, Nama kelas
+    sample_idx : int, Index sampel
+    class_idx : int, Index kelas target
+    """
+    shap_matrix = explainers.fix_shap_dimensions(shap_values, X_data, class_idx)
+
+    if shap_matrix is None:
+        return
+
+    if hasattr(explainer, 'expected_value'):
+        if hasattr(explainer.expected_value, '__iter__'):
+            base_val = explainer.expected_value[class_idx]
+        else:
+            base_val = explainer.expected_value
+    else:
+        base_val = 0
+
+    target_label = class_names[class_idx]
+    print(f"\n--- Force Plot Pasien #{sample_idx} (XGBoost - Kelas: {target_label}) ---")
+
+    shap.initjs()
+    force_plot = shap.force_plot(
+        base_val,
+        shap_matrix[sample_idx],
+        X_data[sample_idx],
+        feature_names=feature_names
+    )
+    return force_plot
+
+
+def plot_xgboost_dependence(shap_values, X_data, feature_names, class_names, 
+                            feature_idx, interaction_idx=None, class_idx=0):
+    """
+    Membuat Dependence Plot untuk XGBoost.
+    Menunjukkan bagaimana SHAP value suatu fitur berubah seiring nilai fitur tersebut.
+    
+    Parameters:
+    -----------
+    shap_values : array/list, SHAP values
+    X_data : array-like, Data fitur
+    feature_names : list, Nama fitur
+    class_names : list, Nama kelas
+    feature_idx : int/str, Index atau nama fitur utama
+    interaction_idx : int/str, Index atau nama fitur interaksi (opsional, 'auto' untuk otomatis)
+    class_idx : int, Index kelas target
+    """
+    shap_matrix = explainers.fix_shap_dimensions(shap_values, X_data, class_idx)
+
+    if shap_matrix is None:
+        return
+
+    # Konversi nama fitur ke index jika perlu
+    if isinstance(feature_idx, str):
+        feature_idx = list(feature_names).index(feature_idx)
+    
+    if isinstance(interaction_idx, str) and interaction_idx != 'auto':
+        interaction_idx = list(feature_names).index(interaction_idx)
+
+    target_label = class_names[class_idx]
+    feature_name = feature_names[feature_idx]
+    
+    plt.figure(figsize=(10, 6))
+    print(f"Generasi Dependence Plot untuk: {feature_name} (Kelas: {target_label})...")
+    
+    shap.dependence_plot(
+        feature_idx, 
+        shap_matrix, 
+        X_data, 
+        feature_names=feature_names,
+        interaction_index=interaction_idx,
+        show=False
+    )
+    plt.title(f'XGBoost Dependence Plot: {feature_name} ({target_label})', fontsize=14)
+    plt.show()
+
+
+def plot_xgboost_interaction_heatmap(shap_interaction_values, feature_names, class_names,
+                                     class_idx=0, top_n=10):
+    """
+    Membuat Heatmap untuk SHAP Interaction Values.
+    
+    Parameters:
+    -----------
+    shap_interaction_values : array, SHAP interaction values
+    feature_names : list, Nama fitur
+    class_names : list, Nama kelas
+    class_idx : int, Index kelas target (untuk multiclass)
+    top_n : int, Jumlah fitur teratas yang ditampilkan
+    """
+    print(f"Generasi Interaction Heatmap untuk kelas: {class_names[class_idx]}...")
+    
+    # Handle multiclass
+    if isinstance(shap_interaction_values, list):
+        interaction_matrix = shap_interaction_values[class_idx]
+    else:
+        interaction_matrix = shap_interaction_values
+    
+    # Rata-rata absolute interaction across samples
+    mean_interaction = np.abs(interaction_matrix).mean(axis=0)
+    
+    # Ambil top N fitur berdasarkan total interaction
+    total_interaction = mean_interaction.sum(axis=1)
+    top_indices = np.argsort(total_interaction)[::-1][:top_n]
+    
+    # Subset matrix
+    subset_matrix = mean_interaction[np.ix_(top_indices, top_indices)]
+    subset_names = [feature_names[i] for i in top_indices]
+    
+    plt.figure(figsize=(10, 8))
+    plt.imshow(subset_matrix, cmap='Reds', aspect='auto')
+    plt.colorbar(label='Mean |SHAP Interaction|')
+    plt.xticks(range(len(subset_names)), subset_names, rotation=45, ha='right')
+    plt.yticks(range(len(subset_names)), subset_names)
+    plt.title(f'XGBoost Feature Interaction Heatmap: {class_names[class_idx]}', fontsize=14)
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_xgboost_importance_comparison(comparison_results, feature_names, top_n=15):
+    """
+    Membuat plot perbandingan berbagai metode feature importance.
+    
+    Parameters:
+    -----------
+    comparison_results : dict, Output dari compare_xgboost_importance_methods()
+    feature_names : list, Nama fitur
+    top_n : int, Jumlah fitur teratas
+    """
+    print("Generasi Comparison Plot untuk Feature Importance...")
+    
+    fig, axes = plt.subplots(1, 3, figsize=(15, 6))
+    methods = ['xgb_gain', 'xgb_weight', 'shap']
+    titles = ['XGBoost Gain', 'XGBoost Weight', 'SHAP Values']
+    colors = ['steelblue', 'forestgreen', 'coral']
+    
+    for ax, method, title, color in zip(axes, methods, titles, colors):
+        importance = comparison_results[method]
+        sorted_items = sorted(importance.items(), key=lambda x: x[1], reverse=True)[:top_n]
+        names = [item[0] for item in sorted_items]
+        values = [item[1] for item in sorted_items]
+        
+        # Normalize
+        if max(values) > 0:
+            values = [v / max(values) for v in values]
+        
+        ax.barh(range(len(names)), values[::-1], color=color)
+        ax.set_yticks(range(len(names)))
+        ax.set_yticklabels(names[::-1])
+        ax.set_xlabel('Normalized Importance')
+        ax.set_title(title, fontsize=12)
+    
+    plt.suptitle('XGBoost Feature Importance: Method Comparison', fontsize=14)
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_xgboost_decision_plot(shap_values, explainer, X_data, feature_names, class_names,
+                               sample_indices=None, class_idx=0, max_display=15):
+    """
+    Membuat Decision Plot untuk XGBoost.
+    Menunjukkan bagaimana prediksi terbentuk dari base value ke prediksi akhir.
+    
+    Parameters:
+    -----------
+    shap_values : array/list, SHAP values
+    explainer : SHAP explainer object
+    X_data : array-like, Data fitur
+    feature_names : list, Nama fitur
+    class_names : list, Nama kelas
+    sample_indices : list, Index sampel yang akan ditampilkan (default: 10 pertama)
+    class_idx : int, Index kelas target
+    max_display : int, Jumlah fitur maksimum
+    """
+    shap_matrix = explainers.fix_shap_dimensions(shap_values, X_data, class_idx)
+
+    if shap_matrix is None:
+        return
+
+    if hasattr(explainer, 'expected_value'):
+        if hasattr(explainer.expected_value, '__iter__'):
+            base_val = explainer.expected_value[class_idx]
+        else:
+            base_val = explainer.expected_value
+    else:
+        base_val = 0
+
+    if sample_indices is None:
+        sample_indices = list(range(min(10, len(X_data))))
+    
+    target_label = class_names[class_idx]
+    print(f"\n--- Decision Plot (XGBoost - Kelas: {target_label}) ---")
+
+    plt.figure(figsize=(10, 8))
+    shap.decision_plot(
+        base_val,
+        shap_matrix[sample_indices],
+        X_data[sample_indices],
+        feature_names=feature_names,
+        show=False
+    )
+    plt.title(f'XGBoost Decision Plot: {target_label}', fontsize=14)
+    plt.show()
+
+
+def plot_xgboost_tree(model, tree_index=0, figsize=(20, 10)):
+    """
+    Visualisasi struktur tree dari XGBoost.
+    
+    Parameters:
+    -----------
+    model : XGBoost model
+    tree_index : int, Index tree yang akan divisualisasi
+    figsize : tuple, Ukuran figure
+    """
+    try:
+        import xgboost as xgb
+        
+        print(f"Generasi Tree Plot untuk tree #{tree_index}...")
+        
+        fig, ax = plt.subplots(figsize=figsize)
+        xgb.plot_tree(model, num_trees=tree_index, ax=ax)
+        plt.title(f'XGBoost Tree #{tree_index}', fontsize=14)
+        plt.tight_layout()
+        plt.show()
+        
+    except ImportError:
+        print("❌ Library xgboost diperlukan untuk plot_xgboost_tree")
+    except Exception as e:
+        print(f"❌ Gagal membuat tree plot: {e}")
