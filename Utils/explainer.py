@@ -104,6 +104,9 @@ def compute_shap_general(model, X_train, X_target, n_background=5, n_samples=5, 
 def fix_shap_dimensions(shap_values, X_data, class_idx):
     """
     UTILITY: Memperbaiki dimensi matriks SHAP secara otomatis.
+    
+    PENTING: X_data harus memiliki jumlah sampel yang SAMA dengan yang digunakan
+    saat menghitung SHAP values (n_samples parameter di compute_shap_general).
     """
     n_samples = X_data.shape[0]
     n_features = X_data.shape[1]
@@ -113,12 +116,21 @@ def fix_shap_dimensions(shap_values, X_data, class_idx):
     if isinstance(shap_values, list):
         try:
             candidate = shap_values[class_idx]
+            shap_n_samples = candidate.shape[0]
+            shap_n_features = candidate.shape[1] if len(candidate.shape) > 1 else candidate.shape[0]
+            
             if candidate.shape == (n_samples, n_features):
                 shap_matrix = candidate
             elif candidate.shape == (n_features, n_samples):
                 shap_matrix = candidate.T
+            elif shap_n_samples != n_samples:
+                # Dimensi tidak cocok - berikan pesan error yang jelas
+                print(f"❌ Error: SHAP dihitung untuk {shap_n_samples} sampel, tapi X_data memiliki {n_samples} sampel.")
+                print(f"   Pastikan X_data[:n] menggunakan n yang sama dengan n_samples di compute_shap_general().")
+                return None
         except IndexError:
             print(f"❌ Error: Index kelas {class_idx} tidak ditemukan (Total kelas: {len(shap_values)}).")
+            return None
 
     # 2. Handle Numpy Array 3D Langsung (Jaga-jaga)
     elif isinstance(shap_values, np.ndarray) and len(shap_values.shape) == 3:
@@ -138,6 +150,7 @@ def fix_shap_dimensions(shap_values, X_data, class_idx):
                 shap_matrix = shap_matrix.T
             else:
                 print(f"⚠️ Warning: Dimensi SHAP {shap_matrix.shape} tidak cocok dengan Data {X_data.shape}")
+                print(f"   Pastikan jumlah sampel di X_data sama dengan n_samples saat compute SHAP.")
                 return None
 
     return shap_matrix
@@ -337,7 +350,7 @@ def compute_shap_xgboost(model, X_target, X_train=None, use_tree_explainer=True)
     Parameters:
     -----------
     model : XGBoost model (Classifier atau Regressor)
-    X_target : array-like, Data yang akan dijelaskan
+    X_target : array-like, Data yang akan dijelaskan (DataFrame atau numpy array)
     X_train : array-like, Data training (opsional, untuk background)
     use_tree_explainer : bool, Gunakan TreeExplainer (lebih cepat) atau KernelExplainer
     
@@ -348,18 +361,73 @@ def compute_shap_xgboost(model, X_target, X_train=None, use_tree_explainer=True)
     """
     print(f"--- Menghitung SHAP (XGBoost)... ---")
     
+    # Konversi ke numpy array jika DataFrame
+    if hasattr(X_target, 'values'):
+        X_target = X_target.values
+    
+    # Pastikan data numerik
+    X_target = np.asarray(X_target, dtype=np.float64)
+    
+    if X_train is not None:
+        if hasattr(X_train, 'values'):
+            X_train = X_train.values
+        X_train = np.asarray(X_train, dtype=np.float64)
+    
     if use_tree_explainer:
-        explainer = shap.TreeExplainer(model)
-        shap_values = explainer.shap_values(X_target)
+        try:
+            # Coba TreeExplainer langsung
+            tree_explainer = shap.TreeExplainer(model)
+            shap_values = tree_explainer.shap_values(X_target)
+            print("✅ Perhitungan SHAP XGBoost selesai (TreeExplainer).")
+            return tree_explainer, shap_values
+        except ValueError as e:
+            if "could not convert string to float" in str(e):
+                # XGBoost multiclass base_score compatibility issue
+                print("⚠️ TreeExplainer tidak kompatibel, menggunakan predict_proba wrapper...")
+                if X_train is None:
+                    # Gunakan X_target sebagai background jika X_train tidak tersedia
+                    background = shap.sample(X_target, min(100, len(X_target)))
+                else:
+                    background = shap.sample(X_train, min(100, len(X_train)))
+                
+                kernel_explainer = shap.KernelExplainer(model.predict_proba, background)
+                shap_values_raw = kernel_explainer.shap_values(X_target, nsamples=100)
+                
+                # Konversi ke format list [class0, class1, ...] untuk konsistensi
+                shap_values = _format_shap_to_list(shap_values_raw)
+                
+                print("✅ Perhitungan SHAP XGBoost selesai (KernelExplainer fallback).")
+                return kernel_explainer, shap_values
+            else:
+                raise e
     else:
         if X_train is None:
             raise ValueError("X_train diperlukan untuk KernelExplainer")
         background = shap.sample(X_train, min(100, len(X_train)))
-        explainer = shap.KernelExplainer(model.predict_proba, background)
-        shap_values = explainer.shap_values(X_target)
+        kernel_explainer = shap.KernelExplainer(model.predict_proba, background)
+        shap_values_raw = kernel_explainer.shap_values(X_target)
+        shap_values = _format_shap_to_list(shap_values_raw)
+        print("✅ Perhitungan SHAP XGBoost selesai (KernelExplainer).")
+        return kernel_explainer, shap_values
+
+
+def _format_shap_to_list(shap_values):
+    """
+    Mengkonversi SHAP values ke format list [array_class0, array_class1, ...].
+    """
+    if isinstance(shap_values, list):
+        return shap_values
     
-    print("✅ Perhitungan SHAP XGBoost selesai.")
-    return explainer, shap_values
+    if isinstance(shap_values, np.ndarray):
+        if shap_values.ndim == 3:
+            # Format (N, F, C) -> list of (N, F)
+            n_classes = shap_values.shape[2]
+            return [shap_values[:, :, c] for c in range(n_classes)]
+        elif shap_values.ndim == 2:
+            # Binary atau regression, wrap dalam list
+            return [shap_values]
+    
+    return shap_values
 
 
 def compute_shap_xgboost_interactions(model, X_target, max_samples=100):
@@ -381,15 +449,21 @@ def compute_shap_xgboost_interactions(model, X_target, max_samples=100):
     print(f"--- Menghitung SHAP Interaction Values (XGBoost)... ---")
     print(f"⚠️ Proses ini membutuhkan waktu lebih lama...")
     
-    explainer = shap.TreeExplainer(model)
-    
     # Batasi jumlah sampel
     X_subset = X_target[:max_samples] if len(X_target) > max_samples else X_target
     
-    shap_interaction_values = explainer.shap_interaction_values(X_subset)
-    
-    print(f"✅ Perhitungan SHAP Interaction selesai. Shape: {np.array(shap_interaction_values).shape}")
-    return explainer, shap_interaction_values
+    try:
+        tree_explainer = shap.TreeExplainer(model)
+        shap_interaction_values = tree_explainer.shap_interaction_values(X_subset)
+        print(f"✅ Perhitungan SHAP Interaction selesai. Shape: {np.array(shap_interaction_values).shape}")
+        return tree_explainer, shap_interaction_values
+    except ValueError as e:
+        if "could not convert string to float" in str(e):
+            print("❌ SHAP Interaction tidak tersedia untuk model XGBoost multiclass ini.")
+            print("   Gunakan compute_shap_xgboost() untuk SHAP values biasa.")
+            return None, None
+        else:
+            raise e
 
 
 def get_xgboost_feature_importance(model, importance_type='weight'):
